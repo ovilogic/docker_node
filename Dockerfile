@@ -8,14 +8,20 @@
 
 ARG NODE_VERSION=22.1.0
 
-FROM node:${NODE_VERSION}-alpine
-
-# Use production node environment by default.
-ENV NODE_ENV production
-
-
+FROM node:${NODE_VERSION}-alpine as base
 WORKDIR /usr/src/app
+EXPOSE 3000
 
+FROM base as dev
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    --mount=type=cache,target=/root/.npm \
+    npm ci --include=dev
+USER node
+COPY . .
+CMD npm run dev
+
+FROM base as prod
 # Download dependencies as a separate step to take advantage of Docker's caching.
 # Leverage a cache mount to /root/.npm to speed up subsequent builds.
 # Leverage a bind mounts to package.json and package-lock.json to avoid having to copy them into
@@ -36,3 +42,14 @@ EXPOSE 3000
 
 # Run the application.
 CMD node src/index.js
+
+FROM base as test
+ENV NODE_ENV test
+
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    --mount=type=cache,target=/root/.npm \
+    npm ci --include=dev
+USER node
+COPY . .
+RUN npm run test
